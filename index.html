@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beam & Frame Solver with Diagrams</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.7.0/math.js"></script>
+    <style>
+        .diagram-container {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .beam {
+            height: 10px;
+            background-color: #4a5568;
+            position: relative;
+            margin: 40px 0;
+        }
+        .support {
+            position: absolute;
+            bottom: -20px;
+            width: 30px;
+            height: 20px;
+            background-color: #718096;
+        }
+        .load {
+            position: absolute;
+            top: -30px;
+            width: 2px;
+            background-color: #e53e3e;
+        }
+        .load-arrow {
+            position: absolute;
+            top: -40px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 15px solid #e53e3e;
+        }
+        .moment {
+            position: absolute;
+            top: -40px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 3px solid #3182ce;
+        }
+        .node {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #38a169;
+            border-radius: 50%;
+            top: -5px;
+        }
+        .code-block {
+            background-color: #2d3748;
+            color: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            overflow-x: auto;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .tab-button {
+            background-color: #e2e8f0;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+        }
+        .tab-button.active {
+            background-color: #4299e1;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold text-center text-blue-800 mb-8">Beam & Frame Solver</h1>
+        
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <div class="flex mb-4 border-b">
+                <button class="tab-button active" onclick="openTab('beam-tab')">Beam Analysis</button>
+                <button class="tab-button" onclick="openTab('frame-tab')">Frame Analysis</button>
+                <button class="tab-button" onclick="openTab('theory-tab')">Theory</button>
+            </div>
+            
+            <div id="beam-tab" class="tab-content active">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">Beam Analysis</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-xl font-medium mb-3">Input Parameters</h3>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Beam Length (m)</label>
+                            <input type="number" id="beam-length" class="w-full px-3 py-2 border rounded-lg" value="5" min="0.1" step="0.1">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Support Type</label>
+                            <select id="support-type" class="w-full px-3 py-2 border rounded-lg">
+                                <option value="simply-supported">Simply Supported</option>
+                                <option value="cantilever">Cantilever</option>
+                                <option value="fixed-fixed">Fixed-Fixed</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Load Type</label>
+                            <select id="load-type" class="w-full px-3 py-2 border rounded-lg" onchange="toggleLoadParams()">
+                                <option value="point">Point Load</option>
+                                <option value="distributed">Distributed Load</option>
+                                <option value="moment">Moment</option>
+                            </select>
+                        </div>
+                        
+                        <div id="point-load-params">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Point Load (kN)</label>
+                                <input type="number" id="point-load" class="w-full px-3 py-2 border rounded-lg" value="10" step="1">
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Position from Left (m)</label>
+                                <input type="number" id="point-load-position" class="w-full px-3 py-2 border rounded-lg" value="2.5" step="0.1">
+                            </div>
+                        </div>
+                        
+                        <div id="distributed-load-params" style="display: none;">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Intensity (kN/m)</label>
+                                <input type="number" id="distributed-load" class="w-full px-3 py-2 border rounded-lg" value="5" step="1">
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Start Position (m)</label>
+                                <input type="number" id="distributed-start" class="w-full px-3 py-2 border rounded-lg" value="1" step="0.1">
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">End Position (m)</label>
+                                <input type="number" id="distributed-end" class="w-full px-3 py-2 border rounded-lg" value="4" step="0.1">
+                            </div>
+                        </div>
+                        
+                        <div id="moment-load-params" style="display: none;">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Moment (kN·m)</label>
+                                <input type="number" id="moment-load" class="w-full px-3 py-2 border rounded-lg" value="15" step="1">
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Position from Left (m)</label>
+                                <input type="number" id="moment-position" class="w-full px-3 py-2 border rounded-lg" value="2.5" step="0.1">
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Modulus of Elasticity (GPa)</label>
+                            <input type="number" id="E" class="w-full px-3 py-2 border rounded-lg" value="200" min="0.1" step="1">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Moment of Inertia (m^4)</label>
+                            <input type="number" id="I" class="w-full px-3 py-2 border rounded-lg" value="0.0001" min="0.00001" step="0.00001">
+                        </div>
+                        
+                        <button onclick="analyzeBeam()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full">
+                            Analyze Beam
+                        </button>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-xl font-medium mb-3">Beam Diagram</h3>
+                        <div class="diagram-container">
+                            <div id="beam-diagram" style="height: 200px;"></div>
+                        </div>
+                        
+                        <h3 class="text-xl font-medium mb-3 mt-6">Results</h3>
+                        <div id="beam-results" class="bg-gray-50 p-4 rounded-lg">
+                            <p class="text-gray-600">Enter parameters and click "Analyze Beam" to see results.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-8">
+                    <h3 class="text-xl font-medium mb-3">Python Code</h3>
+                    <div class="code-block">
+                        <pre id="beam-code">
+# Beam Analysis Code will appear here after analysis
+                        </pre>
+                    </div>
+                </div>
+                
+                <div class="mt-8">
+                    <h3 class="text-xl font-medium mb-3">Diagrams</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="diagram-container">
+                            <canvas id="sfd-chart"></canvas>
+                            <p class="text-center mt-2 font-medium">Shear Force Diagram</p>
+                        </div>
+                        <div class="diagram-container">
+                            <canvas id="bmd-chart"></canvas>
+                            <p class="text-center mt-2 font-medium">Bending Moment Diagram</p>
+                        </div>
+                        <div class="diagram-container">
+                            <canvas id="deflection-chart"></canvas>
+                            <p class="text-center mt-2 font-medium">Deflection Diagram</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="frame-tab" class="tab-content">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">Frame Analysis</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-xl font-medium mb-3">Frame Configuration</h3>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Frame Type</label>
+                            <select id="frame-type" class="w-full px-3 py-2 border rounded-lg">
+                                <option value="portal">Portal Frame</option>
+                                <option value="multi-story">Multi-story Frame</option>
+                                <option value="gable">Gable Frame</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Height (m)</label>
+                            <input type="number" id="frame-height" class="w-full px-3 py-2 border rounded-lg" value="3" min="1" step="0.1">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Width (m)</label>
+                            <input type="number" id="frame-width" class="w-full px-3 py-2 border rounded-lg" value="4" min="1" step="0.1">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Support Conditions</label>
+                            <select id="frame-support" class="w-full px-3 py-2 border rounded-lg">
+                                <option value="fixed">Fixed</option>
+                                <option value="pinned">Pinned</option>
+                                <option value="roller">Roller</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Load Type</label>
+                            <select id="frame-load-type" class="w-full px-3 py-2 border rounded-lg">
+                                <option value="horizontal">Horizontal Load</option>
+                                <option value="vertical">Vertical Load</option>
+                                <option value="uniform">Uniform Load</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Load Value (kN or kN/m)</label>
+                            <input type="number" id="frame-load-value" class="w-full px-3 py-2 border rounded-lg" value="10" step="1">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Modulus of Elasticity (GPa)</label>
+                            <input type="number" id="frame-E" class="w-full px-3 py-2 border rounded-lg" value="200" step="1">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Moment of Inertia (m^4)</label>
+                            <input type="number" id="frame-I" class="w-full px-3 py-2 border rounded-lg" value="0.0001" step="0.0001">
+                        </div>
+                        
+                        <button onclick="analyzeFrame()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-full">
+                            Analyze Frame
+                        </button>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-xl font-medium mb-3">Frame Diagram</h3>
+                        <div class="diagram-container">
+                            <div id="frame-diagram" style="height: 300px; position: relative;"></div>
+                        </div>
+                        
+                        <h3 class="text-xl font-medium mb-3 mt-6">Results</h3>
+                        <div id="frame-results" class="bg-gray-50 p-4 rounded-lg">
+                            <p class="text-gray-600">Enter parameters and click "Analyze Frame" to see results.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-8">
+                    <h3 class="text-xl font-medium mb-3">Python Code</h3>
+                    <div class="code-block">
+                        <pre id="frame-code">
+# Frame Analysis Code will appear here after analysis
+                        </pre>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="theory-tab" class="tab-content">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-800">Structural Analysis Theory</h2>
+                
+                <div class="bg-blue-50 p-6 rounded-lg mb-6">
+                    <h3 class="text-xl font-medium mb-3 text-blue-800">Beam Analysis Fundamentals</h3>
+                    <p class="mb-4">Beam analysis involves determining the internal forces (shear forces and bending moments) and deflections in beams under various loading conditions. The key equations are:</p>
+                    
+                    <div class="code-block mb-4">
+                        <pre>
+# Differential relationships:
+d²M/dx² = -w(x)   # Load intensity
+d²v/dx² = M(x)/EI # Deflection
+
+# Where:
+# M = Bending moment
+# V = Shear force
+# w = Distributed load
+# v = Deflection
+# E = Modulus of elasticity
+# I = Moment of inertia
+                        </pre>
+                    </div>
+                    
+                    <p class="mb-2">Common boundary conditions:</p>
+                    <ul class="list-disc pl-5 mb-4">
+                        <li>Simply supported: v = 0 at supports, M = 0 at supports</li>
+                        <li>Fixed support: v = 0 and dv/dx = 0 at support</li>
+                        <li>Free end: M = 0 and V = 0</li>
+                    </ul>
+                </div>
+                
+                <div class="bg-green-50 p-6 rounded-lg">
+                    <h3 class="text-xl font-medium mb-3 text-green-800">Frame Analysis Fundamentals</h3>
+                    <p class="mb-4">Frame analysis extends beam theory to structures with multiple members connected at joints. Common methods include:</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h4 class="font-bold mb-2">1. Slope-Deflection Method</h4>
+                            <p>Considers rotations and displacements at joints as unknowns.</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h4 class="font-bold mb-2">2. Moment Distribution</h4>
+                            <p>Iterative method for analyzing indeterminate structures.</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow">
+                            <h4 class="font-bold mb-2">3. Matrix Methods</h4>
+                            <p>Stiffness matrix approach suitable for computer implementation.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="code-block">
+                        <pre>
+# Frame element stiffness matrix (2D):
+[k] = [EA/L    0        0       -EA/L     0        0
+        0    12EI/L³  6EI/L²     0    -12EI/L³  6EI/L²
+        0    6EI/L²   4EI/L      0    -6EI/L²   2EI/L
+      -EA/L    0        0       EA/L      0        0
+        0   -12EI/L³ -6EI/L²     0    12EI/L³  -6EI/L²
+        0    6EI/L²   2EI/L      0    -6EI/L²   4EI/L]
+                        </pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab functionality
+        function openTab(tabId) {
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            document.getElementById(tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+        
+        // Toggle load parameters based on selection
+        function toggleLoadParams() {
+            const loadType = document.getElementById('load-type').value;
+            
+            document.getElementById('point-load-params').style.display = 'none';
+            document.getElementById('distributed-load-params').style.display = 'none';
+            document.getElementById('moment-load-params').style.display = 'none';
+            
+            if (loadType === 'point') {
+                document.getElementById('point-load-params').style.display = 'block';
+            } else if (loadType === 'distributed') {
+                document.getElementById('distributed-load-params').style.display = 'block';
+            } else if (loadType === 'moment') {
+                document.getElementById('moment-load-params').style.display = 'block';
+            }
+        }
+        
+        // Initialize charts
+        const sfdCtx = document.getElementById('sfd-chart').getContext('2d');
+        const bmdCtx = document.getElementById('bmd-chart').getContext('2d');
+        const deflectionCtx = document.getElementById('deflection-chart').getContext('2d');
+        
+        let sfdChart = new Chart(sfdCtx, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Shear Force (kN)', data: [], borderColor: 'rgb(239, 68, 68)', borderWidth: 2, fill: false, tension: 0 }] },
+            options: { responsive: true, scales: { y: { beginAtZero: false, title: { display: true, text: 'Shear Force (kN)' } } } }
+        });
+        
+        let bmdChart = new Chart(bmdCtx, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Bending Moment (kN·m)', data: [], borderColor: 'rgb(99, 102, 241)', borderWidth: 2, fill: false, tension: 0 }] },
+            options: { responsive: true, scales: { y: { beginAtZero: false, title: { display: true, text: 'Bending Moment (kN·m)' } } } }
+        });
+        
+        let deflectionChart = new Chart(deflectionCtx, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Deflection (mm)', data: [], borderColor: 'rgb(16, 185, 129)', borderWidth: 2, fill: false, tension: 0 }] },
+            options: { responsive: true, scales: { y: { beginAtZero: false, title: { display: true, text: 'Deflection (mm)' } } } }
+        });
+        
+        // Beam analysis function
+        function analyzeBeam() {
+            // Get and validate inputs
+            const length = parseFloat(document.getElementById('beam-length').value);
+            const supportType = document.getElementById('support-type').value;
+            const loadType = document.getElementById('load-type').value;
+            const E = parseFloat(document.getElementById('E').value) * 1e9; // Pa
+            const I = parseFloat(document.getElementById('I').value); // m^4
+            
+            // Input validation
+            if (isNaN(length) || length <= 0) {
+                alert('Please enter a valid beam length (positive number).');
+                return;
+            }
+            if (isNaN(E) || E <= 0) {
+                alert('Please enter a valid modulus of elasticity (positive number).');
+                return;
+            }
+            if (isNaN(I) || I <= 0) {
+                alert('Please enter a valid moment of inertia (positive number).');
+                return;
+            }
+            
+            let loadValue, position, startPos, endPos, d;
+            if (loadType === 'point') {
+                loadValue = parseFloat(document.getElementById('point-load').value) * 1000; // N
+                position = parseFloat(document.getElementById('point-load-position').value);
+                if (isNaN(loadValue) || isNaN(position) || position < 0 || position > length) {
+                    alert('Please enter valid point load and position (0 ≤ position ≤ length).');
+                    return;
+                }
+            } else if (loadType === 'distributed') {
+                loadValue = parseFloat(document.getElementById('distributed-load').value) * 1000; // N/m
+                startPos = parseFloat(document.getElementById('distributed-start').value);
+                endPos = parseFloat(document.getElementById('distributed-end').value);
+                if (isNaN(loadValue) || isNaN(startPos) || isNaN(endPos) || startPos < 0 || endPos > length || startPos >= endPos) {
+                    alert('Please enter valid distributed load parameters (0 ≤ start < end ≤ length).');
+                    return;
+                }
+                d = endPos - startPos;
+            } else if (loadType === 'moment') {
+                loadValue = parseFloat(document.getElementById('moment-load').value) * 1000; // N·m
+                position = parseFloat(document.getElementById('moment-position').value);
+                if (isNaN(loadValue) || isNaN(position) || position < 0 || position > length) {
+                    alert('Please enter valid moment and position (0 ≤ position ≤ length).');
+                    return;
+                }
+            }
+            
+            // Check support type limitation
+            if (supportType !== 'simply-supported') {
+                alert('Only simply supported beams are fully implemented for all load types.');
+                return;
+            }
+            
+            // Generate beam diagram
+            const beamDiagram = document.getElementById('beam-diagram');
+            beamDiagram.innerHTML = '';
+            
+            const beam = document.createElement('div');
+            beam.className = 'beam';
+            beam.style.width = '100%';
+            beamDiagram.appendChild(beam);
+            
+            // Add supports
+            if (supportType === 'simply-supported') {
+                const leftSupport = document.createElement('div');
+                leftSupport.className = 'support';
+                leftSupport.style.left = '0%';
+                beamDiagram.appendChild(leftSupport);
+                
+                const rightSupport = document.createElement('div');
+                rightSupport.className = 'support';
+                rightSupport.style.left = '100%';
+                rightSupport.style.transform = 'translateX(-100%)';
+                beamDiagram.appendChild(rightSupport);
+            } else if (supportType === 'cantilever') {
+                const fixedSupport = document.createElement('div');
+                fixedSupport.className = 'support';
+                fixedSupport.style.left = '0%';
+                fixedSupport.style.height = '30px';
+                fixedSupport.style.borderLeft = '5px solid #2d3748';
+                beamDiagram.appendChild(fixedSupport);
+            } else if (supportType === 'fixed-fixed') {
+                const leftSupport = document.createElement('div');
+                leftSupport.className = 'support';
+                leftSupport.style.left = '0%';
+                leftSupport.style.height = '30px';
+                leftSupport.style.borderLeft = '5px solid #2d3748';
+                beamDiagram.appendChild(leftSupport);
+                
+                const rightSupport = document.createElement('div');
+                rightSupport.className = 'support';
+                rightSupport.style.left = '100%';
+                rightSupport.style.height = '30px';
+                rightSupport.style.borderRight = '5px solid #2d3748';
+                rightSupport.style.transform = 'translateX(-100%)';
+                beamDiagram.appendChild(rightSupport);
+            }
+            
+            // Add loads
+            if (loadType === 'point') {
+                const positionPercent = (position / length) * 100;
+                const load = document.createElement('div');
+                load.className = 'load';
+                load.style.left = `${positionPercent}%`;
+                load.style.height = '30px';
+                beamDiagram.appendChild(load);
+                
+                const loadArrow = document.createElement('div');
+                loadArrow.className = 'load-arrow';
+                loadArrow.style.left = `${positionPercent}%`;
+                loadArrow.style.transform = 'translateX(-50%)';
+                beamDiagram.appendChild(loadArrow);
+                
+                const loadLabel = document.createElement('div');
+                loadLabel.textContent = `${loadValue / 1000} kN`;
+                loadLabel.style.position = 'absolute';
+                loadLabel.style.top = '-60px';
+                loadLabel.style.left = `${positionPercent}%`;
+                loadLabel.style.transform = 'translateX(-50%)';
+                loadLabel.style.fontSize = '12px';
+                loadLabel.style.fontWeight = 'bold';
+                beamDiagram.appendChild(loadLabel);
+            } else if (loadType === 'distributed') {
+                const startPercent = (startPos / length) * 100;
+                const endPercent = (endPos / length) * 100;
+                const widthPercent = endPercent - startPercent;
+                
+                const distributedLoad = document.createElement('div');
+                distributedLoad.style.position = 'absolute';
+                distributedLoad.style.left = `${startPercent}%`;
+                distributedLoad.style.width = `${widthPercent}%`;
+                distributedLoad.style.top = '-30px';
+                distributedLoad.style.height = '20px';
+                distributedLoad.style.borderLeft = '2px solid #e53e3e';
+                distributedLoad.style.borderRight = '2px solid #e53e3e';
+                distributedLoad.style.borderBottom = '2px solid #e53e3e';
+                beamDiagram.appendChild(distributedLoad);
+                
+                const arrowCount = 5;
+                for (let i = 0; i < arrowCount; i++) {
+                    const arrowPos = startPercent + (widthPercent / (arrowCount - 1)) * i;
+                    const arrow = document.createElement('div');
+                    arrow.className = 'load-arrow';
+                    arrow.style.left = `${arrowPos}%`;
+                    arrow.style.transform = 'translateX(-50%)';
+                    beamDiagram.appendChild(arrow);
+                }
+                
+                const loadLabel = document.createElement('div');
+                loadLabel.textContent = `${loadValue / 1000} kN/m`;
+                loadLabel.style.position = 'absolute';
+                loadLabel.style.top = '-60px';
+                loadLabel.style.left = `${startPercent + widthPercent/2}%`;
+                loadLabel.style.transform = 'translateX(-50%)';
+                loadLabel.style.fontSize = '12px';
+                loadLabel.style.fontWeight = 'bold';
+                beamDiagram.appendChild(loadLabel);
+            } else if (loadType === 'moment') {
+                const positionPercent = (position / length) * 100;
+                const moment = document.createElement('div');
+                moment.className = 'moment';
+                moment.style.left = `${positionPercent}%`;
+                moment.style.transform = 'translateX(-50%)';
+                beamDiagram.appendChild(moment);
+                
+                const momentLabel = document.createElement('div');
+                momentLabel.textContent = `${loadValue / 1000} kN·m`;
+                momentLabel.style.position = 'absolute';
+                momentLabel.style.top = '-70px';
+                momentLabel.style.left = `${positionPercent}%`;
+                momentLabel.style.transform = 'translateX(-50%)';
+                momentLabel.style.fontSize = '12px';
+                momentLabel.style.fontWeight = 'bold';
+                beamDiagram.appendChild(momentLabel);
+            }
+            
+            // Calculate results for simply supported beam
+            const n = 100;
+            const dx = length / n;
+            const x_vals = [];
+            const V_vals = [];
+            const M_vals = [];
+            const def_vals = [];
+            
+            let R1 = 0, R2 = 0, M0 = 0;
+            if (loadType === 'point') {
+                const a = position;
+                const b = length - a;
+                R1 = loadValue * b / length; // N
+                R2 = loadValue * a / length; // N
+                for (let i = 0; i <= n; i++) {
+                    let x = i * dx;
+                    x_vals.push(x.toFixed(2));
+                    let V = (x <= a) ? R1 : R1 - loadValue;
+                    V_vals.push(V / 1000); // kN
+                    let M = (x <= a) ? R1 * x : R1 * x - loadValue * (x - a);
+                    M_vals.push(M / 1000); // kN·m
+                    let v = 0;
+                    if (x <= a) {
+                        v = (loadValue * b * x / (6 * length * E * I)) * (length**2 - x**2 - b**2) * 1000; // mm
+                    } else {
+                        v = (loadValue * a * (length - x) / (6 * length * E * I)) * (length**2 - a**2 - (length - x)**2) * 1000; // mm
+                    }
+                    def_vals.push(v);
+                }
+            } else if (loadType === 'distributed') {
+                const W = loadValue * d; // total load in N
+                const a = startPos + d / 2; // position of equivalent point load
+                const b = length - a;
+                R1 = W * b / length; // N
+                R2 = W * a / length; // N
+                for (let i = 0; i <= n; i++) {
+                    let x = i * dx;
+                    x_vals.push(x.toFixed(2));
+                    let V = R1;
+                    if (x > startPos) {
+                        V -= loadValue * Math.min(x - startPos, d);
+                    }
+                    V_vals.push(V / 1000); // kN
+                    let M = 0;
+                    if (x <= startPos) {
+                        M = R1 * x;
+                    } else if (x <= endPos) {
+                        M = R1 * x - loadValue * (x - startPos)**2 / 2;
+                    } else {
+                        M = R1 * x - loadValue * d * (x - startPos - d / 2);
+                    }
+                    M_vals.push(M / 1000); // kN·m
+                    let v = 0;
+                    if (x <= startPos) {
+                        v = (R1 * x * (length**2 - x**2) / (6 * E * I * length) - W * (length - a) * x * (length**2 - x**2 - (length - a)**2) / (6 * E * I * length)) * 1000;
+                    } else if (x <= endPos) {
+                        v = (R1 * x * (length**2 - x**2) / (6 * E * I * length) - loadValue * (x - startPos)**3 / (6 * E * I) - W * (length - a) * x * (length**2 - x**2 - (length - a)**2) / (6 * E * I * length)) * 1000;
+                    } else {
+                        v = (R2 * (length - x) * (length**2 - (length - x)**2) / (6 * E * I * length) - loadValue * d**3 / (6 * E * I) - W * a * (length - x) * (length**2 - a**2 - (length - x)**2) / (6 * E * I * length)) * 1000;
+                    }
+                    def_vals.push(v);
+                }
+            } else if (loadType === 'moment') {
+                M0 = loadValue; // N·m
+                R1 = M0 / length; // N
+                R2 = -M0 / length; // N
+                for (let i = 0; i <= n; i++) {
+                    let x = i * dx;
+                    x_vals.push(x.toFixed(2));
+                    let V = R1; // constant shear
+                    V_vals.push(V / 1000); // kN
+                    let M = R1 * x;
+                    if (x >= position) {
+                        M -= M0;
+                    }
+                    M_vals.push(M / 1000); // kN·m
+                    let v = 0;
+                    if (x <= position) {
+                        v = (-R1 * x**3 / (6 * E * I) + (M0 / length) * x * (length**2 - x**2) / (6 * E * I)) * 1000;
+                    } else {
+                        v = (-R1 * x**3 / (6 * E * I) + M0 * (x - position)**2 / (2 * E * I) + (M0 / length) * x * (length**2 - x**2) / (6 * E * I)) * 1000;
+                    }
+                    def_vals.push(v);
+                }
+            }
+            
+            // Update charts
+            sfdChart.data.labels = x_vals;
+            sfdChart.data.datasets[0].data = V_vals;
+            sfdChart.update();
+            
+            bmdChart.data.labels = x_vals;
+            bmdChart.data.datasets[0].data = M_vals;
+            bmdChart.update();
+            
+            deflectionChart.data.labels = x_vals;
+            deflectionChart.data.datasets[0].data = def_vals;
+            deflectionChart.update();
+            
+            // Results
+            const maxShear = Math.max(...V_vals.map(Math.abs)).toFixed(2);
+            const maxMoment = Math.max(...M_vals.map(Math.abs)).toFixed(2);
+            const maxDef = Math.max(...def_vals.map(Math.abs)).toFixed(2);
+            
+            const resultsDiv = document.getElementById('beam-results');
+            resultsDiv.innerHTML = `
+                <h4 class="font-bold text-lg mb-2">Analysis Results</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="font-medium">Maximum Shear Force:</p>
+                        <p class="text-blue-600">${maxShear} kN</p>
+                    </div>
+                    <div>
+                        <p class="font-medium">Maximum Bending Moment:</p>
+                        <p class="text-blue-600">${maxMoment} kN·m</p>
+                    </div>
+                    <div>
+                        <p class="font-medium">Maximum Deflection:</p>
+                        <p class="text-blue-600">${maxDef} mm</p>
+                    </div>
+                </div>
+            `;
+            
+            // Generate Python code
+            let pythonCode = `
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Inputs
+L = ${length}
+E = ${E / 1e9}  # GPa
+I = ${I}  # m^4
+`;
+            if (loadType === 'point') {
+                pythonCode += `
+a = ${position}
+P = ${loadValue / 1000}  # kN
+b = L - a
+R1 = P * b / L
+R2 = P * a / L
+x = np.linspace(0, L, 101)
+V = np.piecewise(x, [x <= a, x > a], [R1, R1 - P])
+M = np.piecewise(x, [x <= a, x > a], [lambda x: R1 * x, lambda x: R1 * x - P * (x - a)])
+v = np.piecewise(x, [x <= a, x > a], 
+                 [lambda x: (P * b * x / (6 * L * E * 1e9 * I)) * (L**2 - b**2 - x**2) * 1000,
+                  lambda x: (P * a * (L - x) / (6 * L * E * 1e9 * I)) * (L**2 - a**2 - (L - x)**2) * 1000])
+`;
+            } else if (loadType === 'distributed') {
+                pythonCode += `
+w = ${loadValue / 1000}  # kN/m
+start = ${startPos}
+end = ${endPos}
+d = end - start
+W = w * d
+a = start + d / 2
+b = L - a
+R1 = W * b / L
+R2 = W * a / L
+x = np.linspace(0, L, 101)
+V = np.array([R1 if xi <= start else R1 - w * min(xi - start, d) for xi in x])
+M = np.array([R1 * xi if xi <= start else R1 * xi - w * (xi - start)**2 / 2 if xi <= end else R1 * xi - w * d * (xi - start - d / 2) for xi in x])
+v = np.array([(R1 * xi * (L**2 - xi**2) / (6 * E * 1e9 * I * L) - W * (L - a) * xi * (L**2 - xi**2 - (L - a)**2) / (6 * E * 1e9 * I * L)) * 1000 if xi <= start 
+              else (R1 * xi * (L**2 - xi**2) / (6 * E * 1e9 * I * L) - w * (xi - start)**3 / (6 * E * 1e9 * I) - W * (L - a) * xi * (L**2 - xi**2 - (L - a)**2) / (6 * E * 1e9 * I * L)) * 1000 if xi <= end 
+              else (R2 * (L - xi) * (L**2 - (L - xi)**2) / (6 * E * 1e9 * I * L) - w * d**3 / (6 * E * 1e9 * I) - W * a * (L - xi) * (L**2 - a**2 - (L - xi)**2) / (6 * E * 1e9 * I * L)) * 1000 for xi in x])
+`;
+            } else if (loadType === 'moment') {
+                pythonCode += `
+M0 = ${loadValue / 1000}  # kN·m
+a = ${position}
+R1 = M0 / L
+R2 = -M0 / L
+x = np.linspace(0, L, 101)
+V = np.array([R1 for xi in x])
+M = np.array([R1 * xi if xi < a else R1 * xi - M0 for xi in x])
+v = np.array([(-R1 * xi**3 / (6 * E * 1e9 * I) + (M0 / L) * xi * (L**2 - xi**2) / (6 * E * 1e9 * I)) * 1000 if xi <= a 
+              else (-R1 * xi**3 / (6 * E * 1e9 * I) + M0 * (xi - a)**2 / (2 * E * 1e9 * I) + (M0 / L) * xi * (L**2 - xi**2) / (6 * E * 1e9 * I)) * 1000 for xi in x])
+`;
+            }
+            pythonCode += `
+fig, ax = plt.subplots(3, 1, figsize=(8, 10))
+ax[0].plot(x, V)
+ax[0].set_title('Shear Force (kN)')
+ax[0].grid(True)
+ax[1].plot(x, M)
+ax[1].set_title('Bending Moment (kN·m)')
+ax[1].grid(True)
+ax[2].plot(x, v)
+ax[2].set_title('Deflection (mm)')
+ax[2].grid(True)
+plt.tight_layout()
+plt.show()
+print(f'Max Shear: {np.max(np.abs(V))} kN')
+print(f'Max Moment: {np.max(np.abs(M))} kN·m')
+print(f'Max Deflection: {np.max(np.abs(v))} mm')
+`;
+            document.getElementById('beam-code').innerText = pythonCode;
+        }
+        
+        // Frame analysis function (unchanged)
+        function analyzeFrame() {
+            const frameType = document.getElementById('frame-type').value;
+            const height = parseFloat(document.getElementById('frame-height').value);
+            const width = parseFloat(document.getElementById('frame-width').value);
+            const support = document.getElementById('frame-support').value;
+            const loadType = document.getElementById('frame-load-type').value;
+            const loadValue = parseFloat(document.getElementById('frame-load-value').value);
+            const E = parseFloat(document.getElementById('frame-E').value) * 1e9;
+            const I = parseFloat(document.getElementById('frame-I').value);
+            
+            if (frameType !== 'portal' || support !== 'fixed' || loadType !== 'horizontal') {
+                alert('Only portal frame with fixed supports and horizontal load is implemented.');
+                return;
+            }
+            
+            const A = 1e6;
+            function getLocalK(L, E, A, I) {
+                const EI = E * I;
+                const EA = E * A;
+                const L2 = L * L;
+                const L3 = L2 * L;
+                return math.matrix([
+                    [EA / L, 0, 0, -EA / L, 0, 0],
+                    [0, 12 * EI / L3, 6 * EI / L2, 0, -12 * EI / L3, 6 * EI / L2],
+                    [0, 6 * EI / L2, 4 * EI / L, 0, -6 * EI / L2, 2 * EI / L],
+                    [-EA / L, 0, 0, EA / L, 0, 0],
+                    [0, -12 * EI / L3, -6 * EI / L2, 0, 12 * EI / L3, -6 * EI / L2],
+                    [0, 6 * EI / L2, 2 * EI / L, 0, -6 * EI / L2, 4 * EI / L]
+                ]);
+            }
+            
+            function getTransformation(angle) {
+                const c = Math.cos(angle);
+                const s = Math.sin(angle);
+                const R = math.matrix([
+                    [c, s, 0],
+                    [-s, c, 0],
+                    [0, 0, 1]
+                ]);
+                const T = math.block([
+                    [R, math.zeros(3, 3)],
+                    [math.zeros(3, 3), R]
+                ]);
+                return T;
+            }
+            
+            let K = math.zeros(6, 6);
+            let k_local = getLocalK(height, E, A, I);
+            let T = getTransformation(Math.PI / 2);
+            let k_global = math.multiply(math.transpose(T), math.multiply(k_local, T));
+            for (let i = 3; i < 6; i++) {
+                for (let j = 3; j < 6; j++) {
+                    K.subset(math.index(i-3, j-3), k_global.get([i, j]));
+                }
+            }
+            
+            k_local = getLocalK(height, E, A, I);
+            T = getTransformation(Math.PI / 2);
+            k_global = math.multiply(math.transpose(T), math.multiply(k_local, T));
+            for (let i = 3; i < 6; i++) {
+                for (let j = 3; j < 6; j++) {
+                    K.subset(math.index(i, j), k_global.get([i, j]));
+                }
+            }
+            
+            k_local = getLocalK(width, E, A, I);
+            T = getTransformation(0);
+            k_global = math.multiply(math.transpose(T), math.multiply(k_local, T));
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    K.subset(math.index(i, j), K.get([i, j]) + k_global.get([i, j]));
+                }
+            }
+            for (let i = 0; i < 3; i++) {
+                for (let j = 3; j < 6; j++) {
+                    K.subset(math.index(i, j-3), K.get([i, j-3]) + k_global.get([i, j]));
+                }
+            }
+            for (let i = 3; i < 6; i++) {
+                for (let j = 0; j < 3; j++) {
+                    K.subset(math.index(i-3, j), K.get([i-3, j]) + k_global.get([i, j]));
+                }
+            }
+            for (let i = 3; i < 6; i++) {
+                for (let j = 3; j < 6; j++) {
+                    K.subset(math.index(i-3, j-3), K.get([i-3, j-3]) + k_global.get([i, j]));
+                }
+            }
+            
+            let F = math.zeros(6, 1);
+            F.subset(math.index(0, 0), loadValue * 1000);
+            
+            const K_inv = math.inv(K);
+            const U = math.multiply(K_inv, F);
+            
+            const sway = U.get([0, 0]) * 1000;
+            const disp_left = math.matrix([[0,0,0,U.get([0,0]),U.get([1,0]),U.get([2,0])]].transpose());
+            const T_left = getTransformation(Math.PI / 2);
+            const force_local = math.multiply(k_local, math.multiply(T_left, disp_left));
+            const moment_at_base = force_local.get([2,0]);
+            const moment_at_top = force_local.get([5,0]);
+            
+            const resultsDiv = document.getElementById('frame-results');
+            resultsDiv.innerHTML = `
+                <h4 class="font-bold text-lg mb-2">Analysis Results</h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="font-medium">Sway Deflection:</p>
+                        <p class="text-blue-600">${sway.toFixed(2)} mm</p>
+                    </div>
+                    <div>
+                        <p class="font-medium">Max Bending Moment:</p>
+                        <p class="text-blue-600">${(Math.max(Math.abs(moment_at_base), Math.abs(moment_at_top)) / 1000).toFixed(2)} kN·m</p>
+                    </div>
+                </div>
+            `;
+            
+            const pythonCode = `
+import numpy as np
+
+# Inputs
+h = ${height}
+w = ${width}
+E = ${E / 1e9}  # GPa
+I = ${I}  # m^4
+P = ${loadValue}  # kN
+A = 1e6  # large
+
+# Similar stiffness method in Python using np
+# ... (implement similar matrix assembly and solve)
+            `;
+            document.getElementById('frame-code').innerText = pythonCode;
+            
+            const frameDiagram = document.getElementById('frame-diagram');
+            frameDiagram.innerHTML = '<p>Frame diagram not visualized yet.</p>';
+        }
+    </script>
+</body>
+</html>
